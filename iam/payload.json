@@ -1,0 +1,24 @@
+{
+  "application_mnemonic": "__APPLICATION_MNEMONIC__",
+  "application_url": "__APPLICATION_URL__",
+  "application_description": "__APPLICATION_DESCRIPTION__",
+  "icon_base64": "PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHJ4PSI4IiBmaWxsPSIjRTdGM0VFIi8+CiAgPHJlY3QgeD0iOSIgeT0iMjEiIHdpZHRoPSI1IiBoZWlnaHQ9IjEwIiByeD0iMS41IiBmaWxsPSIjMEU3QTVBIi8+CiAgPHJlY3QgeD0iMTcuNSIgeT0iMTQiIHdpZHRoPSI1IiBoZWlnaHQ9IjE3IiByeD0iMS41IiBmaWxsPSIjMTI5MzZEIi8+CiAgPHJlY3QgeD0iMjYiIHk9IjkiIHdpZHRoPSI1IiBoZWlnaHQ9IjIyIiByeD0iMS41IiBmaWxsPSIjMUZCMzg2Ii8+CiAgPHBhdGggZD0iTTggMzNoMjQiIHN0cm9rZT0iIzBFN0E1QSIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K",
+  "width": 80,
+  "order": 2,
+  "active": true,
+  "permissions": [
+    {
+      "permission_mnemonic": "dashboard:view",
+      "permission_description": "View the registry dashboard (aggregate figures only)",
+      "active": true
+    }
+  ],
+  "roles": [
+    {
+      "role_mnemonic": "Dashboard Viewer",
+      "role_description": "Can open the registry dashboard. Grants no access to individual records.",
+      "active": true,
+      "permissions": ["dashboard:view"]
+    }
+  ]
+}
