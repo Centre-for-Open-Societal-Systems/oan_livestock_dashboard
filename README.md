@@ -61,4 +61,4 @@ npm run build
 | `server/auth/session.ts`, `proxy.ts` | session and role check |
 | `iam/` | IAM catalog and registration script |
 | `server/geo-catalog.ts`, `data/`, `scripts/build-geo-catalog.mjs` | location catalog behind the filters |
-| `helm/`, `Jenkinsfile`, `.github/workflows/` | chart, CI/CD |
+| Owning registry repository | image verification/build, Helm, environment configuration and deployment |

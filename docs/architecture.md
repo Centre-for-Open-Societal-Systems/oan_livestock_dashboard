@@ -101,21 +101,7 @@ dashboard-api must trust that realm URL, host and port included.
 `/health` of the dashboard-api needs no token, so `/api/health` here works the
 same in both modes.
 
-### Folding the dashboard-api into this service
-
-The dashboard-api exists so that only it holds registry database credentials.
-If that separation is no longer wanted, this service can read the reporting
-views itself:
-
-1. add `server/data/sql-chart-source.ts`, implementing `ChartSource` with the
-   dashboard-api's queries (they read only the `lr_rpt_*` reporting views);
-2. select it in `server/data/index.ts` with `CHART_SOURCE=sql`, plus a
-   read-only database role for this service;
-3. retire the dashboard-api deployment, and with it the client-credentials
-   setup above.
-
-Nothing above `ChartSource` changes: the UI, the BFF routes and the cache are
-unaffected.
+The UI/BFF holds no registry database credentials. Database access stays in the dashboard API.
 
 ## API
 
