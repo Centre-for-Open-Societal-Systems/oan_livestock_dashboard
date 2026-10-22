@@ -22,6 +22,7 @@
 //   DASHBOARD_API_CLIENT_ID, DASHBOARD_API_ROLE (default charts:read)   optional
 //   MAX_ATTEMPTS  retries per step, 5 s apart (default 40)
 import { discoverSignIn } from "./discover.mjs"
+import { resolveGrantUsers, grantRole } from "./grants.mjs"
 
 const env = (name, fallback) => {
   const value = process.env[name]?.trim()
@@ -106,6 +107,9 @@ async function ensureRole(clientUuid, name, description) {
   return api("GET", path)
 }
 
+// Resolve every requested staff account before changing any client or mappings.
+const resolvedUsers = await resolveGrantUsers(api, grantUsers, realm)
+
 let client = await findClient(clientId)
 if (!client) {
   await api("POST", "/clients", {
@@ -128,14 +132,9 @@ if (!client) {
 
 const roleRep = await ensureRole(client.id, role, "Can open the registry dashboard (aggregate figures only)")
 
-for (const username of grantUsers) {
-  const user = (await api("GET", `/users?username=${encodeURIComponent(username)}&exact=true`))?.[0]
-  if (!user) {
-    console.log(`User ${username} not found in realm ${realm}; skipped`)
-    continue
-  }
-  await api("POST", `/users/${user.id}/role-mappings/clients/${client.id}`, [roleRep])
-  console.log(`Granted '${role}' to ${username}`)
+for (const user of resolvedUsers) {
+  await grantRole(api, user.id, client.id, roleRep)
+  console.log(`Verified '${role}' for ${user.username}`)
 }
 
 const apiClientId = process.env.DASHBOARD_API_CLIENT_ID?.trim()
@@ -158,7 +157,7 @@ if (apiClientId) {
   }
   const apiRoleRep = await ensureRole(apiClient.id, apiRole, "May read the registry dashboard-api (aggregate chart rows)")
   const serviceAccount = await api("GET", `/clients/${client.id}/service-account-user`)
-  await api("POST", `/users/${serviceAccount.id}/role-mappings/clients/${apiClient.id}`, [apiRoleRep])
+  await grantRole(api, serviceAccount.id, apiClient.id, apiRoleRep)
   console.log(`Granted '${apiRole}' on ${apiClientId} to ${clientId}'s service account`)
 }
 console.log(`[${realm}] ${clientId}: role '${role}' ready`)
