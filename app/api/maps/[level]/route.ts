@@ -1,54 +1,47 @@
 import { createHash } from 'crypto'
-import fs from 'fs/promises'
-import path from 'path'
-import { brotliDecompressSync, gzipSync } from 'zlib'
+import { brotliCompressSync, constants, gzipSync } from 'zlib'
+import { getMapLayer, type MapLayer, type MapLevel } from '@/server/boundaries'
 
-// Map boundaries as TopoJSON, sent as stored. The files are Brotli-compressed
-// TopoJSON (woredas: 747 KB); the map converts them to GeoJSON in the browser
-// (topojson-client). Converting here instead sent ~32 MB of GeoJSON per request
-// for the woredas and cost ~2 s of server time each time.
-//
-// Every browser in use accepts Brotli over HTTPS, so the stored bytes go out
-// unchanged; a client that does not gets gzip. The files change only with a
-// new image, so responses carry an ETag and are cached for a day.
+// Map boundaries as GeoJSON from Master Data (server/boundaries.ts), with the
+// admin1/2/3 properties the map reads. The woredas are ~1.5 MB of GeoJSON, so
+// each layer is compressed once per Master Data refresh and sent as stored:
+// Brotli to browsers that accept it, otherwise gzip. Responses carry an ETag.
 
-const LEVEL_FILE: Record<string, string> = {
-  regions: 'regions.topojson.br',
-  zones: 'zones.topojson.br',
-  woredas: 'woredas.topojson.br',
-}
+const LEVELS: readonly MapLevel[] = ['regions', 'zones', 'woredas']
 
-type Encoded = { br: Buffer; gzip?: Buffer; etag: string }
+type Encoded = { layer: MapLayer; br: Buffer; gzip: Buffer; etag: string }
 
 // On globalThis so every route bundle shares one copy per process.
-const store = globalThis as typeof globalThis & { __mapBoundaryFiles?: Map<string, Promise<Encoded>> }
-const cache = (store.__mapBoundaryFiles ??= new Map())
+const store = globalThis as typeof globalThis & { __mapLayers?: Map<MapLevel, Encoded> }
+const encoded = (store.__mapLayers ??= new Map())
 
-function load(fileName: string): Promise<Encoded> {
-  let entry = cache.get(fileName)
-  if (!entry) {
-    entry = fs.readFile(path.join(process.cwd(), 'public', 'maps', fileName)).then((br) => ({
-      br,
-      etag: `"${createHash('sha1').update(br).digest('hex').slice(0, 16)}"`,
-    }))
-    entry.catch(() => cache.delete(fileName))
-    cache.set(fileName, entry)
+function encode(level: MapLevel, layer: MapLayer): Encoded {
+  const current = encoded.get(level)
+  if (current?.layer === layer) return current
+  const json = Buffer.from(JSON.stringify(layer))
+  const next = {
+    layer,
+    br: brotliCompressSync(json, { params: { [constants.BROTLI_PARAM_QUALITY]: 9 } }),
+    gzip: gzipSync(json),
+    etag: `"${createHash('sha1').update(json).digest('hex').slice(0, 16)}"`,
   }
-  return entry
+  encoded.set(level, next)
+  return next
 }
+
+const isLevel = (value: string): value is MapLevel => (LEVELS as readonly string[]).includes(value)
 
 export async function GET(req: Request, context: { params: Promise<{ level: string }> }) {
   const { level } = await context.params
-  const fileName = LEVEL_FILE[level]
-  if (!fileName) {
+  if (!isLevel(level)) {
     return Response.json({ error: 'Not found' }, { status: 404 })
   }
 
   try {
-    const file = await load(fileName)
+    const file = encode(level, await getMapLayer(level))
     const headers = new Headers({
       'Content-Type': 'application/json',
-      'Cache-Control': 'public, max-age=86400',
+      'Cache-Control': 'public, max-age=3600',
       ETag: file.etag,
       Vary: 'Accept-Encoding',
     })
@@ -57,15 +50,11 @@ export async function GET(req: Request, context: { params: Promise<{ level: stri
     }
 
     const accepts = (req.headers.get('accept-encoding') ?? '').toLowerCase()
-    if (/\bbr\b/.test(accepts)) {
-      headers.set('Content-Encoding', 'br')
-      return new Response(new Uint8Array(file.br), { headers })
-    }
-    file.gzip ??= gzipSync(brotliDecompressSync(file.br))
-    headers.set('Content-Encoding', 'gzip')
-    return new Response(new Uint8Array(file.gzip), { headers })
+    const br = /\bbr\b/.test(accepts)
+    headers.set('Content-Encoding', br ? 'br' : 'gzip')
+    return new Response(new Uint8Array(br ? file.br : file.gzip), { headers })
   } catch (err) {
     console.error('[Maps API] failed to load', level, err)
-    return Response.json({ error: 'Failed to load map' }, { status: 500 })
+    return Response.json({ error: 'Failed to load map' }, { status: 502 })
   }
 }

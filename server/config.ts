@@ -75,6 +75,18 @@ export const config = {
     sessionTtlMs: Math.max(5, Number(process.env.SESSION_CACHE_SECONDS) || 60) * 1000,
   },
 
+  /**
+   * Master Data (commons), whose public catalogue holds the shared geography:
+   * map boundaries and the location catalog behind the filters.
+   */
+  masterData: {
+    get url() {
+      return trimSlash(required("MASTER_DATA_URL"))
+    },
+    /** How long boundaries and units are served before they are fetched again. */
+    cacheTtlMs: Math.max(60, Number(process.env.MASTER_DATA_CACHE_SECONDS) || 3600) * 1000,
+  },
+
   /** Public origin of this dashboard, used to build login return URLs. */
   get publicUrl() {
     return trimSlash(required("PUBLIC_URL"))

@@ -1,26 +1,14 @@
 // server/geo-catalog.ts
 //
 // The location catalog behind the filter bar (region -> zone -> woreda ->
-// kebele). It is the farmer registry's Master Data catalog, which every
-// registry shares, snapshotted into data/geo-catalog.json.br by
-// scripts/build-geo-catalog.mjs. Codes are the catalog ids without their level
-// prefix (ET04, ET0401, ...), the same codes the dashboard-api filters on.
-import fs from "fs/promises"
-import path from "path"
-import { brotliDecompressSync } from "zlib"
+// kebele): the OAN geography in Master Data, which every registry records
+// (server/master-data.ts). Codes are Master Data unit ids, P-codes such as
+// ET04 and ET0401, the same codes the dashboard-api filters on.
+import { getUnits, type Unit } from "./master-data"
 
 export interface GeoUnit {
   id: string
   name: string
-}
-
-type Entry = [code: string, name: string, parent?: string]
-
-interface RawCatalog {
-  regions: Entry[]
-  zones: Entry[]
-  woredas: Entry[]
-  kebeles: Entry[]
 }
 
 export interface GeoCatalog {
@@ -28,32 +16,37 @@ export interface GeoCatalog {
   children(level: "zones" | "woredas" | "kebeles", parent: string): GeoUnit[]
 }
 
-async function load(): Promise<GeoCatalog> {
-  const buf = await fs.readFile(path.join(process.cwd(), "data", "geo-catalog.json.br"))
-  const raw = JSON.parse(brotliDecompressSync(buf).toString("utf8")) as RawCatalog
-  const index = (entries: Entry[]) => {
-    const byParent = new Map<string, GeoUnit[]>()
-    for (const [id, name, parent = ""] of entries) {
-      const list = byParent.get(parent) ?? []
-      list.push({ id, name })
-      byParent.set(parent, list)
-    }
-    return byParent
+const byName = (a: GeoUnit, b: GeoUnit) => a.name.localeCompare(b.name)
+
+function index(units: Unit[]): Map<string, GeoUnit[]> {
+  const byParent = new Map<string, GeoUnit[]>()
+  for (const u of units) {
+    const parent = u.parent_unit_id ?? ""
+    const list = byParent.get(parent) ?? []
+    list.push({ id: u.unit_id, name: u.name })
+    byParent.set(parent, list)
   }
-  const levels = { zones: index(raw.zones), woredas: index(raw.woredas), kebeles: index(raw.kebeles) }
-  return {
-    regions: raw.regions.map(([id, name]) => ({ id, name })),
-    children: (level, parent) => levels[level].get(parent) ?? [],
-  }
+  for (const list of byParent.values()) list.sort(byName)
+  return byParent
 }
 
-// Shared per process (see server/dashboard-services.ts for why globalThis).
-const holder = globalThis as typeof globalThis & { __geoCatalog?: Promise<GeoCatalog> }
+let built: { sources: Unit[][]; catalog: GeoCatalog } | undefined
 
-export function getGeoCatalog(): Promise<GeoCatalog> {
-  holder.__geoCatalog ??= load().catch(error => {
-    holder.__geoCatalog = undefined // retry on the next call
-    throw error
-  })
-  return holder.__geoCatalog
+export async function getGeoCatalog(): Promise<GeoCatalog> {
+  const [regions, zones, woredas, kebeles] = await Promise.all([
+    getUnits("regions"),
+    getUnits("zones"),
+    getUnits("woredas"),
+    getUnits("kebeles"),
+  ])
+  // Indexed once per Master Data refresh (the unit lists are replaced then).
+  const sources = [regions, zones, woredas, kebeles]
+  if (built && built.sources.every((s, i) => s === sources[i])) return built.catalog
+  const levels = { zones: index(zones), woredas: index(woredas), kebeles: index(kebeles) }
+  const catalog: GeoCatalog = {
+    regions: regions.map(u => ({ id: u.unit_id, name: u.name })).sort(byName),
+    children: (level, parent) => levels[level].get(parent) ?? [],
+  }
+  built = { sources, catalog }
+  return catalog
 }

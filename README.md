@@ -22,6 +22,8 @@ The dashboard needs:
 
 - the registry's **dashboard-api** (`DASHBOARD_API_URL`), which serves the chart
   rows from the registry's reporting views;
+- **Master Data** (`MASTER_DATA_URL`), whose public catalogue holds the OAN
+  geography: the locations in the filters and the map boundaries;
 - the registry's **IAM** (`IAM_URL`) for login and roles. For UI work without
   one, set `AUTH_ENABLED=false` (never in a deployment).
 
@@ -60,5 +62,5 @@ npm run build
 | `server/data/` | chart catalog, `ChartSource` and the cache |
 | `server/auth/session.ts`, `proxy.ts` | session and role check |
 | `iam/` | IAM catalog and registration script |
-| `server/geo-catalog.ts`, `data/`, `scripts/build-geo-catalog.mjs` | location catalog behind the filters |
+| `server/master-data.ts`, `server/geo-catalog.ts`, `server/boundaries.ts` | geography from Master Data: filter catalog and map boundaries |
 | Owning registry repository | image verification/build, Helm, environment configuration and deployment |
