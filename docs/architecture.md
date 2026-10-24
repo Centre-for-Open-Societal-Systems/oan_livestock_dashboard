@@ -120,10 +120,12 @@ dashboard role.
 
 Filters: `region`, `zone`, `woreda`, `kebele` (catalog codes: P-codes such as `ET04`, `ET0401`) and `recordState`.
 
-The filter locations come from `data/geo-catalog.json.br`, a snapshot of the farmer
-registry's Master Data location catalog, which every registry shares
-(`scripts/build-geo-catalog.mjs`; see docs/deployment.md). The map boundaries
-are older and miss units the registries record, so they draw the map only.
+Locations and map boundaries both come from Master Data's public catalogue
+(`MASTER_DATA_URL`, `server/master-data.ts`): the OAN geography every registry
+records, so filter codes, map features and chart rows share one id space. The
+filters list every published unit; the map draws the units Master Data has a
+polygon for, and coverage counts those. Both are held per process and fetched
+again after `MASTER_DATA_CACHE_SECONDS`; a failed refresh keeps the last copy.
 
 The dashboard serves one host, `PUBLIC_URL`: IAM's session cookies reach only
 hosts under its cookie domain, so `proxy.ts` redirects any other host there

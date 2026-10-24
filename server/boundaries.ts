@@ -1,12 +1,12 @@
 // server/boundaries.ts
 //
-// Administrative units from the map boundaries shipped in public/maps (regions,
-// zones, woredas: P-codes and names). They are the geography the dashboards can
-// draw, so filters, coverage and the map all use the same list of units.
-// Only feature properties are read; geometry is never decoded here.
-import fs from 'fs/promises'
-import path from 'path'
-import { brotliDecompressSync } from 'zlib'
+// Map boundaries (regions, zones, woredas) from Master Data's public catalogue
+// (server/master-data.ts). Only units Master Data has a polygon for are drawn,
+// so coverage counts those woredas too and always agrees with the map.
+//
+// Features are given the admin1/2/3 Pcod / Name properties the map reads, with
+// ancestors taken from the Master Data hierarchy, never from the polygon.
+import { getBoundaries as getLevelBoundaries, getUnits, type BoundaryCollection, type Unit } from "./master-data"
 
 export interface AdminUnit {
   code: string
@@ -28,47 +28,85 @@ export interface Boundaries {
   woredas: Woreda[]
 }
 
-type Props = Record<string, string | null | undefined>
+export type MapLevel = "regions" | "zones" | "woredas"
 
-async function readProperties(level: 'regions' | 'zones' | 'woredas'): Promise<Props[]> {
-  const buf = await fs.readFile(path.join(process.cwd(), 'public', 'maps', `${level}.topojson.br`))
-  const topo = JSON.parse(brotliDecompressSync(buf).toString('utf8'))
-  const key = Object.keys(topo.objects ?? {})[0]
-  if (!key) throw new Error(`Invalid ${level} topology`)
-  return (topo.objects[key].geometries ?? []).map((g: { properties?: Props }) => g.properties ?? {})
+type AdminProps = {
+  admin1Pcod: string
+  admin1Name?: string
+  admin2Pcod?: string
+  admin2Name?: string
+  admin3Pcod?: string
+  admin3Name?: string
+}
+
+export interface MapLayer {
+  type: "FeatureCollection"
+  features: { type: "Feature"; properties: AdminProps; geometry: unknown }[]
 }
 
 const byName = <T extends AdminUnit>(a: T, b: T) => a.name.localeCompare(b.name)
 
-async function load(): Promise<Boundaries> {
-  const [regions, zones, woredas] = await Promise.all([
-    readProperties('regions'),
-    readProperties('zones'),
-    readProperties('woredas'),
-  ])
+/** Parent of every zone (its region) and woreda (its zone). */
+function parentsOf(zones: Unit[], woredas: Unit[]): Map<string, string> {
+  return new Map([...zones, ...woredas].map(u => [u.unit_id, u.parent_unit_id ?? ""]))
+}
+
+function adminProps(level: MapLevel, code: string, name: string, parentOf: Map<string, string>): AdminProps {
+  if (level === "regions") return { admin1Pcod: code, admin1Name: name }
+  if (level === "zones") return { admin1Pcod: parentOf.get(code) ?? "", admin2Pcod: code, admin2Name: name }
+  const zone = parentOf.get(code) ?? ""
+  return { admin1Pcod: parentOf.get(zone) ?? "", admin2Pcod: zone, admin3Pcod: code, admin3Name: name }
+}
+
+function toLayer(level: MapLevel, collection: BoundaryCollection, parentOf: Map<string, string>): MapLayer {
   return {
-    regions: regions
-      .map(p => ({ code: p.admin1Pcod ?? '', name: p.admin1Name ?? '' }))
-      .filter(u => u.code)
-      .sort(byName),
-    zones: zones
-      .map(p => ({ code: p.admin2Pcod ?? '', name: p.admin2Name ?? '', region: p.admin1Pcod ?? '' }))
-      .filter(u => u.code)
-      .sort(byName),
-    woredas: woredas
-      .map(p => ({ code: p.admin3Pcod ?? '', name: p.admin3Name ?? '', zone: p.admin2Pcod ?? '', region: p.admin1Pcod ?? '' }))
-      .filter(u => u.code)
-      .sort(byName),
+    type: "FeatureCollection",
+    features: collection.features
+      .filter(f => f.properties?.pcode && f.geometry)
+      .map(f => ({
+        type: "Feature",
+        properties: adminProps(level, f.properties.pcode ?? "", f.properties.area_name ?? "", parentOf),
+        geometry: f.geometry,
+      })),
   }
 }
 
-// Shared per process (see server/dashboard-services.ts for why globalThis).
-const holder = globalThis as typeof globalThis & { __boundaries?: Promise<Boundaries> }
+// Built once per Master Data refresh: the same layer object is returned until
+// a source is replaced, so callers can cache on its identity.
+const layers = new Map<MapLevel, { sources: unknown[]; layer: MapLayer }>()
 
-export function getBoundaries(): Promise<Boundaries> {
-  holder.__boundaries ??= load().catch(error => {
-    holder.__boundaries = undefined // retry on the next call
-    throw error
-  })
-  return holder.__boundaries
+/** One map level as GeoJSON with admin properties. */
+export async function getMapLayer(level: MapLevel): Promise<MapLayer> {
+  const [collection, zones, woredas] = await Promise.all([
+    getLevelBoundaries(level),
+    getUnits("zones"),
+    getUnits("woredas"),
+  ])
+  const sources = [collection, zones, woredas]
+  const built = layers.get(level)
+  if (built && built.sources.every((s, i) => s === sources[i])) return built.layer
+  const layer = toLayer(level, collection, parentsOf(zones, woredas))
+  layers.set(level, { sources, layer })
+  return layer
+}
+
+/** The units the map can draw, with their ancestors. */
+export async function getBoundaries(): Promise<Boundaries> {
+  const [regions, zones, woredas] = await Promise.all([
+    getMapLayer("regions"),
+    getMapLayer("zones"),
+    getMapLayer("woredas"),
+  ])
+  const props = (layer: MapLayer) => layer.features.map(f => f.properties)
+  return {
+    regions: props(regions)
+      .map(p => ({ code: p.admin1Pcod, name: p.admin1Name ?? "" }))
+      .sort(byName),
+    zones: props(zones)
+      .map(p => ({ code: p.admin2Pcod ?? "", name: p.admin2Name ?? "", region: p.admin1Pcod }))
+      .sort(byName),
+    woredas: props(woredas)
+      .map(p => ({ code: p.admin3Pcod ?? "", name: p.admin3Name ?? "", zone: p.admin2Pcod ?? "", region: p.admin1Pcod }))
+      .sort(byName),
+  }
 }
