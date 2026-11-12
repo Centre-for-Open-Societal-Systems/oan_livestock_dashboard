@@ -64,3 +64,10 @@ npm run build
 | `iam/` | IAM catalog and registration script |
 | `server/master-data.ts`, `server/geo-catalog.ts`, `server/boundaries.ts` | geography from Master Data: filter catalog and map boundaries |
 | Owning registry repository | image verification/build, Helm, environment configuration and deployment |
+
+## Continuous validation
+
+See [ci/README.md](ci/README.md) for Node 24 lint/type checks, IAM tests,
+production builds and validation-only Jenkins/GitHub checks.
+[docs/ci.md](docs/ci.md) specifies required client-credentials and Master Data
+configuration. Publishing and deployment remain with the owning registry.
