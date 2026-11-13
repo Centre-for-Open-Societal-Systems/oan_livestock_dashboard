@@ -19,10 +19,6 @@ ENV NODE_ENV=production \
     PORT=3000
 COPY --from=build --chown=node:node /app/.next/standalone ./
 COPY --from=build --chown=node:node /app/.next/static ./.next/static
-# Map boundaries are read from disk at runtime (app/api/maps, server/boundaries.ts).
-COPY --from=build --chown=node:node /app/public ./public
-# Location catalog behind the filters (server/geo-catalog.ts).
-COPY --from=build --chown=node:node /app/data ./data
 # IAM self-registration (tile + role catalog), run as a one-shot job:
 #   node iam/register.mjs
 COPY --from=build --chown=node:node /app/iam ./iam
