@@ -8,7 +8,7 @@ owner labels, a 2 GiB container limit and a 1536 MiB Node heap limit; cleanup re
 JUnit reports are retained under reports/ and ignored by Git/build contexts.
 
 GitHub uses immutable action SHAs and equivalent checks; the thin Jenkinsfile
-uses the existing vpn-agent2 Docker-capable agent pattern for validation only.
+uses any Docker-capable build agent for validation only.
 No live Jenkins job, deployment, credentials or image publication is configured.
 The owning registry continues building from the root Dockerfile.
 
