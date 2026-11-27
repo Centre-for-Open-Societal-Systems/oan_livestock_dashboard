@@ -1,3 +1,5 @@
+def call() {
+
 pipeline {
     // Docker only, no cluster or VPN access: any build agent, like the registries' build stages.
     agent any
@@ -15,3 +17,6 @@ pipeline {
         always { junit allowEmptyResults: false, testResults: 'reports/iam.xml' }
     }
 }
+
+}
+return this
